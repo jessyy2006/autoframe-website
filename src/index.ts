@@ -10,7 +10,7 @@ let enableWebcamButton: HTMLButtonElement;
 // Check if webcam access is supported.
 const hasGetUserMedia = () => !!navigator.mediaDevices?.getUserMedia; // !! converts the result to true or false
 
-// this is specific to the user's site setup...how do i generalize this
+// NEED TO ADD: videoZoom in config or smth so that it's passed as global variable with name videoElement in the lib cuz everything in lib depends on it
 if (hasGetUserMedia()) {
   enableWebcamButton = document.getElementById(
     "webcamButton"
