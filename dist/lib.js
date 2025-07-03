@@ -4280,6 +4280,9 @@ async function enableCam(event) {
   navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
     originalVideo.srcObject = stream;
     console.log("og video assigned webcam stream");
+    originalVideo.play().catch((e2) => {
+      console.warn("Video play failed:", e2);
+    });
     originalVideo.addEventListener("loadeddata", async (event2) => {
       framedVideo.srcObject = await autoframe(stream);
     });
