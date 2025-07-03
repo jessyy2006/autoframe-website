@@ -25,4 +25,4 @@ if (hasGetUserMedia()) {
   console.warn("getUserMedia() is not supported by your browser");
 }
 
-init("config.json");
+init("/config.json");
