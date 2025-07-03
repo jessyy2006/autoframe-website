@@ -9,7 +9,7 @@ esbuild
     bundle: true,
     outfile: "dist/lib.js",
     sourcemap: true,
-    target: ["es2017"],
+    target: ["ESNext"],
     format: "esm",
     minify: false,
     platform: "browser",

@@ -4066,6 +4066,7 @@ Kc.prototype.detectForVideo = Kc.prototype.F, Kc.prototype.detect = Kc.prototype
 }, Kc.POSE_CONNECTIONS = vc;
 var CONFIG = {};
 var faceDetector;
+var exportStream = null;
 var TARGET_FACE_RATIO;
 var SMOOTHING_FACTOR;
 var keepZoomReset;
@@ -4105,74 +4106,67 @@ var initializefaceDetector = async () => {
 };
 var canvas = document.createElement("canvas");
 var ctx = canvas.getContext("2d");
-async function enableCam(event, videoElement) {
-  if (!faceDetector) {
-    alert("Face Detector is still loading. Please try again..");
-    return;
-  }
-  const constraints = {
-    video: true
-  };
-  navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
-    videoElement.srcObject = exportFramedStream();
-    videoElement.addEventListener("loadeddata", (event2) => {
-      predictWebcam(videoElement);
-    });
-    const videoTrack = stream.getVideoTracks()[0];
-    canvas.width = 320;
-    canvas.height = 200;
-  }).catch((err) => {
-    console.error(err);
-  });
+var track;
+var settings;
+var width;
+var height;
+var lastDetectionTime = 0;
+function autoframe(inputStream) {
+  track = inputStream.getTracks()[0];
+  settings = track.getSettings();
+  predictionLoop(inputStream);
+  return exportStream;
 }
-var lastVideoTime = -1;
-async function predictWebcam(videoElement) {
-  let startTimeMs = performance.now();
-  if (videoElement.currentTime !== lastVideoTime) {
-    lastVideoTime = videoElement.currentTime;
-    const detections = faceDetector.detectForVideo(
-      videoElement,
-      startTimeMs
-    ).detections;
-    processFrame(detections, videoElement);
+async function predictionLoop(inputStream) {
+  let now = performance.now();
+  if (now - lastDetectionTime >= CONFIG.predictionInterval) {
+    lastDetectionTime = now;
+    try {
+      const detections = faceDetector.detectForVideo(
+        videoFrame(inputStream),
+        now
+      ).detections;
+      processFrame(detections, inputStream);
+    } catch (err) {
+      console.error("Error grabbing frame or detecting face:", err);
+    }
   }
-  window.requestAnimationFrame(() => predictWebcam(videoElement));
+  window.requestAnimationFrame(() => predictionLoop(inputStream));
 }
+var videoFrame = (inputStream) => {
+  const imageCapture = new window.ImageCapture(track);
+  return imageCapture.grabFrame();
+};
 var smoothedX = 0;
 var smoothedY = 0;
 var smoothedZoom = 0;
 var firstDetection = true;
 var oldFace = null;
-function processFrame(detections, videoElement) {
+function processFrame(detections, inputStream) {
   if (detections && detections.length > 0) {
     const newFace = detections[0].boundingBox;
     if (!oldFace) {
       oldFace = newFace;
     }
     if (didPositionChange(newFace, oldFace)) {
-      faceFrame(newFace, videoElement);
+      faceFrame(newFace, inputStream);
       oldFace = newFace;
     } else {
-      faceFrame(oldFace, videoElement);
+      faceFrame(oldFace, inputStream);
     }
   } else {
     if (keepZoomReset) {
-      zoomReset(videoElement);
+      zoomReset(inputStream);
     }
   }
   let cropWidth = canvas.width / smoothedZoom;
   let cropHeight = canvas.height / smoothedZoom;
   let topLeftX = smoothedX - cropWidth / 2, topLeftY = smoothedY - cropHeight / 2;
-  topLeftX = Math.max(
-    0,
-    Math.min(topLeftX, videoElement.videoWidth - cropWidth)
-  );
-  topLeftY = Math.max(
-    0,
-    Math.min(topLeftY, videoElement.videoHeight - cropHeight)
-  );
+  topLeftX = Math.max(0, Math.min(topLeftX, width - cropWidth));
+  topLeftY = Math.max(0, Math.min(topLeftY, height - cropHeight));
   ctx.drawImage(
-    videoElement,
+    // doesnt take mediastream obj so trying with image bitmap instead
+    videoFrame(inputStream),
     // source video
     // cropped from source
     topLeftX,
@@ -4192,7 +4186,7 @@ function processFrame(detections, videoElement) {
     canvas.height
   );
 }
-function faceFrame(face, videoElement) {
+function faceFrame(face, inputStream) {
   let xCenter = face.originX + face.width / 2;
   let yCenter = face.originY + face.height / 2;
   smoothedX = xCenter * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedX;
@@ -4202,18 +4196,21 @@ function faceFrame(face, videoElement) {
   if (zoomScale >= 1) {
     smoothedZoom = zoomScale * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedZoom;
   } else {
-    zoomReset(videoElement);
+    zoomReset(inputStream);
   }
   if (firstDetection) {
-    smoothedX = videoElement.videoWidth / 2;
-    smoothedY = videoElement.videoHeight / 2;
+    smoothedX = width / 2;
+    smoothedY = height / 2;
     smoothedZoom = 1;
     firstDetection = false;
   }
 }
-function zoomReset(videoElement) {
-  smoothedX = videoElement.videoWidth / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedX;
-  smoothedY = videoElement.videoHeight / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedY;
+function zoomReset(inputStream) {
+  var _a2, _b;
+  width = (_a2 = settings.width) != null ? _a2 : 0;
+  height = (_b = settings.height) != null ? _b : 0;
+  smoothedX = width / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedX;
+  smoothedY = height / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedY;
   smoothedZoom = 1 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedZoom;
 }
 function didPositionChange(newFace, oldFace2) {
@@ -4237,31 +4234,45 @@ async function init(config_path) {
   SMOOTHING_FACTOR = CONFIG.framing.SMOOTHING_FACTOR;
   keepZoomReset = CONFIG.framing.keepZoomReset;
   await initializefaceDetector();
-}
-function exportFramedStream() {
-  console.log("inside exportFramedStream");
-  return canvas.captureStream();
+  canvas.width = CONFIG.canvas.width;
+  canvas.height = CONFIG.canvas.height;
+  exportStream = canvas.captureStream();
 }
 
 // src/index.ts
-var videoZoom = document.getElementById(
+await init("/config.json");
+var originalVideo = document.getElementById(
+  "originalVideo"
+);
+var framedVideo = document.getElementById(
   "framedVideo"
 );
 var enableWebcamButton;
-var hasGetUserMedia = () => {
-  var _a2;
-  return !!((_a2 = navigator.mediaDevices) == null ? void 0 : _a2.getUserMedia);
-};
+var hasGetUserMedia = () => !!navigator.mediaDevices?.getUserMedia;
+alert(hasGetUserMedia());
 if (hasGetUserMedia()) {
   enableWebcamButton = document.getElementById(
     "webcamButton"
   );
   enableWebcamButton.addEventListener("click", (event) => {
-    enableCam(event, videoZoom);
+    enableCam(event);
+    enableWebcamButton.remove();
   });
-  enableWebcamButton.remove();
 } else {
   console.warn("getUserMedia() is not supported by your browser");
 }
-init("/config.json");
+async function enableCam(event) {
+  const constraints = {
+    video: true
+  };
+  navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+    originalVideo.srcObject = stream;
+    originalVideo.addEventListener("loadeddata", async (event2) => {
+      framedVideo.srcObject = await autoframe(stream);
+    });
+    const videoTrack = stream.getVideoTracks()[0];
+  }).catch((err) => {
+    console.error(err);
+  });
+}
 //# sourceMappingURL=lib.js.map

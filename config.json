@@ -17,8 +17,10 @@
   },
 
   "canvas": {
-    "width": 0,
-    "height": 0,
+    "width": 320,
+    "height": 200,
     "frameRate": 0
-  }
+  },
+
+  "predictionInterval": 500
 }
