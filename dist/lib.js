@@ -4263,5 +4263,5 @@ if (hasGetUserMedia()) {
 } else {
   console.warn("getUserMedia() is not supported by your browser");
 }
-init("config_path goes here");
+init("config.json");
 //# sourceMappingURL=lib.js.map
