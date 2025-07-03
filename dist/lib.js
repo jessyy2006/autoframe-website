@@ -4066,7 +4066,7 @@ Kc.prototype.detectForVideo = Kc.prototype.F, Kc.prototype.detect = Kc.prototype
 }, Kc.POSE_CONNECTIONS = vc;
 var CONFIG = {};
 var faceDetector;
-var exportStream = null;
+var exportStream;
 var TARGET_FACE_RATIO;
 var SMOOTHING_FACTOR;
 var keepZoomReset;
@@ -4108,8 +4108,6 @@ var canvas = document.createElement("canvas");
 var ctx = canvas.getContext("2d");
 var track;
 var settings;
-var width;
-var height;
 var lastDetectionTime = 0;
 var sourceFrame;
 function autoframe(inputStream) {
@@ -4119,27 +4117,36 @@ function autoframe(inputStream) {
   CONFIG.canvas.width = settings.width;
   CONFIG.canvas.height = settings.height;
   CONFIG.canvas.frameRate = settings.frameRate;
+  console.log("Config loaded successfully:", CONFIG);
   canvas.width = CONFIG.canvas.width;
   canvas.height = CONFIG.canvas.height;
+  console.log(`canvas width: ${canvas.width}, canvas height: ${canvas.height}`);
   predictionLoop(inputStream);
-  return exportStream;
+  exportStream = canvas.captureStream();
+  console.log(exportStream);
+  return {
+    framedStream: exportStream,
+    width: canvas.width,
+    height: canvas.height
+  };
 }
 async function predictionLoop(inputStream) {
   console.log("inside predictionLoop");
   let now = performance.now();
+  sourceFrame = await videoFrame(inputStream);
   if (now - lastDetectionTime >= CONFIG.predictionInterval) {
     lastDetectionTime = now;
     try {
-      sourceFrame = await videoFrame(inputStream);
       const detections = faceDetector.detectForVideo(
         sourceFrame,
         now
       ).detections;
-      processFrame(detections, inputStream, sourceFrame);
+      processFrame(detections, inputStream);
     } catch (err) {
       console.error("Error grabbing frame or detecting face:", err);
     }
   }
+  drawCurrentFrame(sourceFrame);
   window.requestAnimationFrame(() => predictionLoop(inputStream));
 }
 var videoFrame = async (inputStream) => {
@@ -4151,7 +4158,7 @@ var smoothedY = 0;
 var smoothedZoom = 0;
 var firstDetection = true;
 var oldFace = null;
-function processFrame(detections, inputStream, sourceFrame2) {
+function processFrame(detections, inputStream) {
   if (detections && detections.length > 0) {
     console.log("there is a face");
     const newFace = detections[0].boundingBox;
@@ -4170,11 +4177,24 @@ function processFrame(detections, inputStream, sourceFrame2) {
       zoomReset(inputStream);
     }
   }
+}
+function drawCurrentFrame(sourceFrame2) {
   let cropWidth = canvas.width / smoothedZoom;
   let cropHeight = canvas.height / smoothedZoom;
   let topLeftX = smoothedX - cropWidth / 2, topLeftY = smoothedY - cropHeight / 2;
-  topLeftX = Math.max(0, Math.min(topLeftX, width - cropWidth));
-  topLeftY = Math.max(0, Math.min(topLeftY, height - cropHeight));
+  topLeftX = Math.max(0, Math.min(topLeftX, CONFIG.canvas.width - cropWidth));
+  topLeftY = Math.max(0, Math.min(topLeftY, CONFIG.canvas.height - cropHeight));
+  console.log("ctx draw image will draw with params:", {
+    source: sourceFrame2,
+    sx: topLeftX,
+    sy: topLeftY,
+    sWidth: cropWidth,
+    sHeight: cropHeight,
+    dx: 0,
+    dy: 0,
+    dWidth: canvas.width,
+    dHeight: canvas.height
+  });
   ctx.drawImage(
     // doesnt take mediastream obj so trying with image bitmap instead
     sourceFrame2,
@@ -4196,6 +4216,7 @@ function processFrame(detections, inputStream, sourceFrame2) {
     // since canvas width/height is hardcoded to my video resolution, this maintains aspect ratio. should change this to update to whatever cam resolution rainbow uses.
     canvas.height
   );
+  console.log("finished drawing image");
 }
 function faceFrame(face, inputStream) {
   let xCenter = face.originX + face.width / 2;
@@ -4210,29 +4231,25 @@ function faceFrame(face, inputStream) {
     zoomReset(inputStream);
   }
   if (firstDetection) {
-    smoothedX = width / 2;
-    smoothedY = height / 2;
+    smoothedX = CONFIG.canvas.width / 2;
+    smoothedY = CONFIG.canvas.height / 2;
     smoothedZoom = 1;
     firstDetection = false;
   }
 }
 function zoomReset(inputStream) {
-  var _a2, _b;
-  width = (_a2 = settings.width) != null ? _a2 : 0;
-  height = (_b = settings.height) != null ? _b : 0;
-  smoothedX = width / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedX;
-  smoothedY = height / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedY;
+  smoothedX = CONFIG.canvas.width / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedX;
+  smoothedY = CONFIG.canvas.height / 2 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedY;
   smoothedZoom = 1 * SMOOTHING_FACTOR + (1 - SMOOTHING_FACTOR) * smoothedZoom;
 }
 function didPositionChange(newFace, oldFace2) {
   console.log("inside did pos change fx");
-  const thresholdX = canvas.width * 0.07;
-  const thresholdY = canvas.height * 0.07;
+  const thresholdX = canvas.width * CONFIG.framing.percentThresholdX;
+  const thresholdY = canvas.height * CONFIG.framing.percentThresholdY;
   const zoomRatio = newFace.width / oldFace2.width;
-  const zoomThreshold = 0.1;
   if (
     // if zoom/position changed a lot.
-    Math.abs(newFace.originX - oldFace2.originX) > thresholdX || Math.abs(newFace.originY - oldFace2.originY) > thresholdY || Math.abs(1 - zoomRatio) > zoomThreshold
+    Math.abs(newFace.originX - oldFace2.originX) > thresholdX || Math.abs(newFace.originY - oldFace2.originY) > thresholdY || Math.abs(1 - zoomRatio) > CONFIG.framing.percentZoomThreshold
   ) {
     return true;
   } else {
@@ -4241,14 +4258,11 @@ function didPositionChange(newFace, oldFace2) {
 }
 async function init(config_path) {
   await loadConfig(config_path);
+  console.log("Config loaded successfully:", CONFIG);
   TARGET_FACE_RATIO = CONFIG.framing.TARGET_FACE_RATIO;
   SMOOTHING_FACTOR = CONFIG.framing.SMOOTHING_FACTOR;
   keepZoomReset = CONFIG.framing.keepZoomReset;
   await initializefaceDetector();
-  canvas.width = CONFIG.canvas.width;
-  canvas.height = CONFIG.canvas.height;
-  console.log(`canvas width: ${canvas.width}, canvas height: ${canvas.height}`);
-  exportStream = canvas.captureStream();
 }
 
 // src/index.ts
@@ -4268,6 +4282,7 @@ if (hasGetUserMedia()) {
   );
   enableWebcamButton.addEventListener("click", (event) => {
     enableCam(event);
+    console.log("enabled cam");
     enableWebcamButton.remove();
   });
 } else {
@@ -4284,7 +4299,13 @@ async function enableCam(event) {
       console.warn("Video play failed:", e2);
     });
     originalVideo.addEventListener("loadeddata", async (event2) => {
-      framedVideo.srcObject = await autoframe(stream);
+      const { framedStream, width, height } = await autoframe(stream);
+      framedVideo.width = width;
+      framedVideo.height = height;
+      framedVideo.srcObject = framedStream;
+      console.log(
+        `framedVideo w=${framedVideo.videoWidth}, h=${framedVideo.videoHeight}`
+      );
       framedVideo.play().catch((e2) => {
         console.warn("Video play failed:", e2);
       });
