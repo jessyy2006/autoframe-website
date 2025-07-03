@@ -44,21 +44,14 @@ async function enableCam(event: Event) {
     .getUserMedia(constraints) // returns a Promise — meaning it's asynchronous
     .then(function (stream) {
       originalVideo.srcObject = stream;
-
+      console.log("og video assigned webcam stream");
+      originalVideo.play().catch((e) => {
+        console.warn("Video play failed:", e);
+      });
       // When the video finishes loading and is ready to play, run the predictWebcam function.
       originalVideo.addEventListener("loadeddata", async (event) => {
         framedVideo.srcObject = await autoframe(stream);
       });
-      // const videoTrack = stream.getVideoTracks()[0];
-      // const settings = videoTrack.getSettings();
-
-      // Store live settings in config so canvas size = video size
-      // CONFIG.canvas.width = settings.width;
-      // CONFIG.canvas.height = settings.height;
-      // CONFIG.canvas.frameRate = settings.frameRate;
-
-      // canvas.width = CONFIG.canvas.width; // 640;
-      // canvas.height = CONFIG.canvas.height; // 480;
     })
     .catch((err) => {
       console.error(err);

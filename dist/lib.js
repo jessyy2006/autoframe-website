@@ -4113,12 +4113,19 @@ var height;
 var lastDetectionTime = 0;
 var sourceFrame;
 function autoframe(inputStream) {
-  track = inputStream.getTracks()[0];
+  console.log("inside autoframe");
+  track = inputStream.getVideoTracks()[0];
   settings = track.getSettings();
+  CONFIG.canvas.width = settings.width;
+  CONFIG.canvas.height = settings.height;
+  CONFIG.canvas.frameRate = settings.frameRate;
+  canvas.width = CONFIG.canvas.width;
+  canvas.height = CONFIG.canvas.height;
   predictionLoop(inputStream);
   return exportStream;
 }
 async function predictionLoop(inputStream) {
+  console.log("inside predictionLoop");
   let now = performance.now();
   if (now - lastDetectionTime >= CONFIG.predictionInterval) {
     lastDetectionTime = now;
@@ -4146,6 +4153,7 @@ var firstDetection = true;
 var oldFace = null;
 function processFrame(detections, inputStream, sourceFrame2) {
   if (detections && detections.length > 0) {
+    console.log("there is a face");
     const newFace = detections[0].boundingBox;
     if (!oldFace) {
       oldFace = newFace;
@@ -4158,6 +4166,7 @@ function processFrame(detections, inputStream, sourceFrame2) {
     }
   } else {
     if (keepZoomReset) {
+      console.log("no face");
       zoomReset(inputStream);
     }
   }
@@ -4238,6 +4247,7 @@ async function init(config_path) {
   await initializefaceDetector();
   canvas.width = CONFIG.canvas.width;
   canvas.height = CONFIG.canvas.height;
+  console.log(`canvas width: ${canvas.width}, canvas height: ${canvas.height}`);
   exportStream = canvas.captureStream();
 }
 
@@ -4269,6 +4279,7 @@ async function enableCam(event) {
   };
   navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
     originalVideo.srcObject = stream;
+    console.log("og video assigned webcam stream");
     originalVideo.addEventListener("loadeddata", async (event2) => {
       framedVideo.srcObject = await autoframe(stream);
     });
