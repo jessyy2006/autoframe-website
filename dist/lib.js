@@ -4285,6 +4285,9 @@ async function enableCam(event) {
     });
     originalVideo.addEventListener("loadeddata", async (event2) => {
       framedVideo.srcObject = await autoframe(stream);
+      framedVideo.play().catch((e2) => {
+        console.warn("Video play failed:", e2);
+      });
     });
   }).catch((err) => {
     console.error(err);

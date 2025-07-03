@@ -48,9 +48,12 @@ async function enableCam(event: Event) {
       originalVideo.play().catch((e) => {
         console.warn("Video play failed:", e);
       });
-      // When the video finishes loading and is ready to play, run the predictWebcam function.
+      // When the video finishes loading and is ready to play, run the autoframe function.
       originalVideo.addEventListener("loadeddata", async (event) => {
         framedVideo.srcObject = await autoframe(stream);
+        framedVideo.play().catch((e) => {
+          console.warn("Video play failed:", e);
+        });
       });
     })
     .catch((err) => {
