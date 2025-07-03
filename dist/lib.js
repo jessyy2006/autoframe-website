@@ -4134,6 +4134,7 @@ async function predictionLoop(inputStream) {
   console.log("inside predictionLoop");
   let now = performance.now();
   sourceFrame = await videoFrame(inputStream);
+  console.log(`diff in time ${performance.now() - now}`);
   if (now - lastDetectionTime >= CONFIG.predictionInterval) {
     lastDetectionTime = now;
     try {
