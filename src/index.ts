@@ -1,7 +1,8 @@
-import { init, autoframe, AutoFramingConfig } from "rainbow-auto-framing";
+import { AutoFramingConfig, AutoFramingLibrary } from "rainbow-auto-framing";
 
 // initialize library
-await init("/config.json");
+const library = new AutoFramingLibrary();
+await library.init("/config.json");
 
 // DOM Setup
 let originalVideo: HTMLVideoElement = document.getElementById(
@@ -51,7 +52,7 @@ async function enableCam(event: Event) {
       });
       // When the video finishes loading and is ready to play, run the autoframe function.
       originalVideo.addEventListener("loadeddata", async (event) => {
-        const { framedStream, width, height } = await autoframe(stream);
+        const { framedStream, width, height } = await library.autoframe(stream);
 
         framedVideo.width = width;
         framedVideo.height = height;
