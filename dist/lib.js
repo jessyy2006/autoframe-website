@@ -1,4 +1,4 @@
-// ../autoframe-library/dist/lib.js
+// node_modules/.pnpm/rainbow-auto-framing@file+..+autoframe-library/node_modules/rainbow-auto-framing/lib/index.js
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
 var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
@@ -4305,7 +4305,7 @@ var AutoFramingLibrary = class {
 
 // src/index.ts
 var library = new AutoFramingLibrary();
-await library.init("/config.json");
+await library.init("config.json");
 var originalVideo = document.getElementById(
   "originalVideo"
 );
