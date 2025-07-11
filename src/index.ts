@@ -4,29 +4,25 @@ import {
 } from "rainbow-auto-framing";
 
 // initialize library
+const config = await loadConfig("config.json");
 const library = RainbowAutoFramingLibrary.create();
-
-// await library.init("/config.json");
-await library.start();
+library.start();
 
 // DOM Setup
-let originalVideo: HTMLVideoElement = document.getElementById(
+const originalVideo: HTMLVideoElement = document.getElementById(
   "originalVideo"
 ) as HTMLVideoElement;
 let ogDiv: HTMLElement = document.getElementById("ogDiv") as HTMLVideoElement;
-let framedVideo: HTMLVideoElement = document.getElementById(
+const framedVideo: HTMLVideoElement = document.getElementById(
   "framedVideo"
 ) as HTMLVideoElement;
-let enableWebcamButton: HTMLButtonElement;
+const enableWebcamButton: HTMLButtonElement = document.getElementById(
+  "webcamButton"
+) as HTMLButtonElement;
 
 // Check if webcam access is supported.
 const hasGetUserMedia = () => !!navigator.mediaDevices?.getUserMedia; // !! converts the result to true or false
-alert(hasGetUserMedia());
-
 if (hasGetUserMedia()) {
-  enableWebcamButton = document.getElementById(
-    "webcamButton"
-  ) as HTMLButtonElement;
   enableWebcamButton.addEventListener("click", (event) => {
     enableCam(event);
     console.log("enabled cam");
@@ -43,9 +39,7 @@ if (hasGetUserMedia()) {
  */
 async function enableCam(event: Event) {
   // getUsermedia parameters
-  const constraints = {
-    video: true,
-  };
+  const constraints = { video: true };
 
   // Activate the webcam stream. need to flip video around 180 cuz mirrored rn
   navigator.mediaDevices
@@ -71,6 +65,7 @@ async function enableCam(event: Event) {
           `framedVideo w=${framedVideo.videoWidth}, h=${framedVideo.videoHeight}`
         );
         // ctx.drawImage isn't working, params are whack
+
         framedVideo.play().catch((e) => {
           console.warn("Video play failed:", e);
         });
@@ -79,4 +74,27 @@ async function enableCam(event: Event) {
     .catch((err) => {
       console.error(err);
     });
+}
+
+async function loadConfig(
+  config_path: string
+): Promise<RainbowAutoFramingConfig> {
+  // rejig so tht it takes autoframing config object as param, so that init() can access width/heigt
+  try {
+    // 1. Use fetch to get the JSON file
+    const response = await fetch(config_path);
+
+    // 2. Check if the network request was successful
+    if (!response.ok)
+      throw new Error(
+        `HTTP error! status: ${response.status} while fetching config.json`
+      );
+
+    // 3. json() parses the JSON response into a JavaScript object
+    console.log("Config loaded successfully:", this.config);
+    return (await response.json()) as RainbowAutoFramingConfig;
+  } catch (error) {
+    console.error("Error loading or parsing config.json:", error);
+    // might want to initialize with default settings if the config fails to load (should i?)
+  }
 }
