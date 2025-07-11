@@ -26,5 +26,7 @@
     "frameRate": 0
   },
 
+  "showBoundingBox": true,
+
   "predictionInterval": 500
 }
