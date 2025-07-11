@@ -3,7 +3,7 @@ import { RainbowAutoFramingConfig, RainbowAutoFramingLibrary } from "rainbow-aut
 // initialize library
 const config = await loadConfig("config.json");
 const library = RainbowAutoFramingLibrary.create();
-library.init();
+library.start();
 
 // DOM Setup
 const originalVideo: HTMLVideoElement = document.getElementById("originalVideo") as HTMLVideoElement;

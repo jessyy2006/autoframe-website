@@ -2,7 +2,7 @@
   "name": "rainbow-auto-framing-site",
   "version": "1.0.0",
   "type": "module",
-  "main": "lib/cjs/index.js",
+  "main": "lib/index.js",
   "module": "lib/index.js",
   "types": "lib/",
   "scripts": {
