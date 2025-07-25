@@ -4080,7 +4080,9 @@ var defaultConfig_default = {
     keepZoomReset: false,
     percentThresholdX: 0.07,
     percentThresholdY: 0.07,
-    percentZoomThreshold: 0.1
+    percentZoomThreshold: 0.1,
+    multFacePadX: 20,
+    multFacePadY: 10
   },
   canvas: {
     width: 640,
@@ -4116,9 +4118,9 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
    * Initializes the RainbowAutoFramingLibrary with a configuration.
    * @param config - Optional configuration object to override default settings.
    */
-  async start(config) {
+  async start(config2) {
     try {
-      if (config) this.config = config;
+      if (config2) this.config = config2;
       await this.initializefaceDetector();
       this.injectStyles();
       console.info(`[RainbowAutoFramingLibrary] start -- success`);
@@ -4204,42 +4206,48 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
    * @param inputStream - The MediaStream to be processed for autoframing.
    */
   async predictionLoop(inputStream, divId, video) {
-    let now = performance.now();
-    this.sourceFrame = await this.videoFrame();
-    if (now - this.lastDetectionTime >= this.config.predictionInterval) {
-      this.lastDetectionTime = now;
-      try {
-        this.detections = await this.faceDetector.detectForVideo(
-          this.sourceFrame,
-          now
-        ).detections;
-        this.processFrame(this.detections, inputStream);
-        console.log(
-          "divId:",
-          divId,
-          "video:",
-          video,
-          "detections:",
-          this.detections
-        );
-        if (divId && video) {
-          console.log("About to display detections");
-          this.displayVideoDetections(this.detections, divId, video);
-          console.log("displaying detection");
+    try {
+      let now = performance.now();
+      this.sourceFrame = await this.videoFrame();
+      if (now - this.lastDetectionTime >= this.config.predictionInterval) {
+        this.lastDetectionTime = now;
+        try {
+          this.detections = await this.faceDetector.detectForVideo(
+            this.sourceFrame,
+            now
+          ).detections;
+          this.processFrame(this.detections, inputStream);
+          if (divId && video) {
+            console.log("About to display detections");
+            this.displayVideoDetections(this.detections, divId, video);
+            console.log("displaying detection");
+          }
+        } catch (error) {
+          console.error(
+            `[RainbowAutoFramingLibrary] predictionLoop -- failure -- Error grabbing frame or detecting face ${error == null ? void 0 : error.message}`
+          );
         }
-      } catch (error) {
-        console.error(
-          `[RainbowAutoFramingLibrary] predictionLoop -- failure -- Error grabbing frame or detecting face ${error == null ? void 0 : error.message}`
-        );
       }
+      console.log("detections.length = ", this.detections.length);
+      if (this.detections && this.detections.length > 1) {
+        console.log("running MULT face");
+        this.multiFaceFrame(this.multNewFace, this.detections);
+      } else {
+        console.log("running ONE face");
+        this.faceFrame(this.refFace);
+      }
+      this.drawCurrentFrame(this.sourceFrame);
+    } catch (error) {
+      console.error(
+        `[RainbowAutoFramingLibrary] predictionLoop -- failure -- Error  ${error == null ? void 0 : error.message}`
+      );
     }
-    this.faceFrame(this.refFace, inputStream);
-    this.drawCurrentFrame(this.sourceFrame);
     window.requestAnimationFrame(() => {
       if (divId && video) this.predictionLoop(inputStream, divId, video);
       else this.predictionLoop(inputStream);
     });
   }
+  // add try ctach to revert to normal video
   /**
    * Captures a video frame from the MediaStream track.
    * @param inputStream - The MediaStream from which to capture the frame.
@@ -4254,18 +4262,57 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
    * @param {detections[]} detections - array of detection objects (detected faces), from most high confidence to least.
    */
   processFrame(detections, inputStream) {
-    if (detections && detections.length > 0) {
+    console.log("in processFrame");
+    if (detections && detections.length == 1) {
+      console.log("there is a face");
       this.newFace = detections[0].boundingBox;
-      if (!this.refFace) this.refFace = this.newFace;
-      if (this.didPositionChange(this.newFace, this.refFace)) {
-        this.refFace = this.newFace;
-      } else {
+      console.log(this.newFace);
+    } else if (detections && detections.length > 1) {
+      console.log("mult faces");
+      let iteratingFace = detections[0].boundingBox;
+      let width = 0, height = 0;
+      let originX = iteratingFace.originX, maxX = iteratingFace.originX, originY = iteratingFace.originY, widthOfBox = iteratingFace.width, heightOfBox = iteratingFace.height, maxY = iteratingFace.originY;
+      let lowestPoint = iteratingFace.originY, highestPoint = iteratingFace.originY + iteratingFace.height;
+      for (let face of detections) {
+        if (!face.boundingBox) continue;
+        if (face.boundingBox.originX < originX)
+          originX = face.boundingBox.originX;
+        if (face.boundingBox.originX > maxX) {
+          maxX = face.boundingBox.originX;
+          widthOfBox = face.boundingBox.width;
+        }
+        if (face.boundingBox.originY < lowestPoint) {
+          lowestPoint = face.boundingBox.originY;
+        }
+        if (face.boundingBox.originY + face.boundingBox.height > highestPoint) {
+          highestPoint = face.boundingBox.originY + face.boundingBox.height;
+        }
       }
+      console.log(
+        `XY padding = ${this.config.framing.multFacePadX}, ${this.config.framing.multFacePadY}`
+      );
+      width = this.config.framing.multFacePadX + maxX + widthOfBox - originX;
+      height = this.config.framing.multFacePadY + highestPoint - lowestPoint;
+      this.multNewFace = {
+        // padding: 0, // for now, will add to config late if needed
+        originX,
+        originY: lowestPoint,
+        width,
+        height
+      };
+      console.log(this.multNewFace);
+      this.newFace = this.multNewFace;
+      console.log(`newFace = ${this.newFace}`);
+      this.drawBoxOverVideo(this.multNewFace);
     } else {
       if (this.config.framing.keepZoomReset) {
         console.log("no face");
         this.zoomReset();
       }
+    }
+    if (!this.refFace) this.refFace = this.newFace;
+    if (this.didPositionChange(this.newFace, this.refFace)) {
+      this.refFace = this.newFace;
     }
   }
   /**
@@ -4284,6 +4331,17 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
       0,
       Math.min(topLeftY, this.config.canvas.height - cropHeight)
     );
+    console.log("ctx draw image will draw with params:", {
+      source: sourceFrame,
+      sx: topLeftX,
+      sy: topLeftY,
+      sWidth: cropWidth,
+      sHeight: cropHeight,
+      dx: 0,
+      dy: 0,
+      dWidth: this.canvas.width,
+      dHeight: this.canvas.height
+    });
     this.ctx.drawImage(
       // doesnt take mediastream obj so trying with image bitmap instead
       sourceFrame,
@@ -4302,7 +4360,6 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
       0,
       // y coord
       this.canvas.width,
-      // since canvas width/height is hardcoded to my video resolution, this maintains aspect ratio. should change this to update to whatever cam resolution rainbow uses.
       this.canvas.height
     );
     this.sourceFrame.close();
@@ -4314,7 +4371,7 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
    * Sets up smoothed bounding parameters to autoframe face
    * @param {detection.boundingBox} face - bounding box of tracked face
    */
-  faceFrame(face, inputStream) {
+  faceFrame(face) {
     const smoothingFactor = this.config.framing.SMOOTHING_FACTOR;
     let xCenter = face.originX + face.width / 2;
     let yCenter = face.originY + face.height / 2;
@@ -4331,6 +4388,45 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
       this.smoothedZoom = 1;
       this.firstDetection = false;
     }
+  }
+  /**
+   * Sets up smoothed bounding parameters to autoframe multiple faces
+   * Uses multNewFace bounding box as input
+   */
+  multiFaceFrame(face, detections) {
+    console.log("in multiface frame");
+    const smoothingFactor = this.config.framing.SMOOTHING_FACTOR;
+    let xTotal = 0, yTotal = 0;
+    for (const det of detections) {
+      const centerX = det.boundingBox.originX + det.boundingBox.width / 2;
+      const centerY = det.boundingBox.originY + det.boundingBox.height / 2;
+      xTotal += centerX;
+      yTotal += centerY;
+    }
+    const xCenter = xTotal / detections.length;
+    const yCenter = yTotal / detections.length;
+    this.smoothedX = xCenter * smoothingFactor + (1 - smoothingFactor) * this.smoothedX;
+    this.smoothedY = yCenter * smoothingFactor + (1 - smoothingFactor) * this.smoothedY;
+    const targetFacePixels = this.config.framing.TARGET_FACE_RATIO * this.canvas.height;
+    const zoomScale = targetFacePixels / face.height;
+    if (zoomScale >= 1) {
+      this.smoothedZoom = zoomScale * smoothingFactor + (1 - smoothingFactor) * this.smoothedZoom;
+    } else {
+      this.zoomReset();
+    }
+    if (this.firstDetection) {
+      this.smoothedX = this.config.canvas.width / 2;
+      this.smoothedY = this.config.canvas.height / 2;
+      this.smoothedZoom = 1;
+      this.firstDetection = false;
+    }
+    console.log(
+      "Multi-face frame center:",
+      this.smoothedX,
+      this.smoothedY,
+      "zoom:",
+      this.smoothedZoom
+    );
   }
   /**
    * When face isn't detected, optional framing reset to default stream determined by keepZoomReset boolean.
@@ -4434,11 +4530,46 @@ var RainbowAutoFramingLibrary = class _RainbowAutoFramingLibrary {
   `;
     document.head.appendChild(style);
   }
+  drawBoxOverVideo(multNewFace) {
+    var _a2;
+    const video = document.getElementById("originalVideo");
+    if (!video) {
+      console.error("Video element with id 'originalVideo' not found.");
+      return;
+    }
+    let canvas = document.getElementById("faceOverlay");
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.id = "faceOverlay";
+      canvas.style.position = "absolute";
+      canvas.style.left = `${video.offsetLeft}px`;
+      canvas.style.top = `${video.offsetTop}px`;
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = "999";
+      (_a2 = video.parentElement) == null ? void 0 : _a2.appendChild(canvas);
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 3;
+    const padding = multNewFace.padding || 0;
+    ctx.strokeRect(
+      multNewFace.originX - padding,
+      multNewFace.originY - padding,
+      multNewFace.width + padding * 2,
+      multNewFace.height + padding * 2
+      // Assuming square box
+    );
+  }
 };
 
 // src/index.ts
+var config = await loadConfig("config.json");
 var library = RainbowAutoFramingLibrary.create();
-await library.start();
+library.start();
 var originalVideo = document.getElementById(
   "originalVideo"
 );
@@ -4446,13 +4577,11 @@ var ogDiv = document.getElementById("ogDiv");
 var framedVideo = document.getElementById(
   "framedVideo"
 );
-var enableWebcamButton;
+var enableWebcamButton = document.getElementById(
+  "webcamButton"
+);
 var hasGetUserMedia = () => !!navigator.mediaDevices?.getUserMedia;
-alert(hasGetUserMedia());
 if (hasGetUserMedia()) {
-  enableWebcamButton = document.getElementById(
-    "webcamButton"
-  );
   enableWebcamButton.addEventListener("click", (event) => {
     enableCam(event);
     console.log("enabled cam");
@@ -4462,9 +4591,7 @@ if (hasGetUserMedia()) {
   console.warn("getUserMedia() is not supported by your browser");
 }
 async function enableCam(event) {
-  const constraints = {
-    video: true
-  };
+  const constraints = { video: true };
   navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
     originalVideo.srcObject = stream;
     console.log("og video assigned webcam stream");
@@ -4489,5 +4616,18 @@ async function enableCam(event) {
   }).catch((err) => {
     console.error(err);
   });
+}
+async function loadConfig(config_path) {
+  try {
+    const response = await fetch(config_path);
+    if (!response.ok)
+      throw new Error(
+        `HTTP error! status: ${response.status} while fetching config.json`
+      );
+    console.log("Config loaded successfully:", this.config);
+    return await response.json();
+  } catch (error) {
+    console.error("Error loading or parsing config.json:", error);
+  }
 }
 //# sourceMappingURL=lib.js.map
